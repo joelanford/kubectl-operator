@@ -15,6 +15,8 @@ func newExtensionInstallCmd(cfg *action.Configuration) *cobra.Command {
 	i := internalaction.NewOperatorInstall(cfg)
 	i.Logf = log.Printf
 
+	var autoCreateMissingRules bool
+
 	cmd := &cobra.Command{
 		Use:   "install <operator>",
 		Short: "Install an operator",
@@ -24,6 +26,11 @@ func newExtensionInstallCmd(cfg *action.Configuration) *cobra.Command {
 			i.Namespace = internalaction.OperatorInstallNamespaceConfig{
 				Name: cfg.Namespace,
 			}
+
+			if autoCreateMissingRules {
+				i.MissingRulesHandler = i.AutoCreateMissingRules
+			}
+
 			clusterExtension, err := i.Run(cmd.Context())
 			if err != nil {
 				log.Fatalf("failed to install cluster extension: %v", err)
@@ -32,6 +39,7 @@ func newExtensionInstallCmd(cfg *action.Configuration) *cobra.Command {
 		},
 	}
 	bindOperatorInstallFlags(cmd.Flags(), i)
+	cmd.Flags().BoolVar(&autoCreateMissingRules, "auto-create-missing-rules", autoCreateMissingRules, "Automatically create RBAC for cluster extension service account")
 
 	return cmd
 }
@@ -40,6 +48,5 @@ func bindOperatorInstallFlags(fs *pflag.FlagSet, i *internalaction.OperatorInsta
 	fs.StringSliceVarP(&i.Channels, "channels", "c", []string{}, "upgrade channels from which to resolve bundles")
 	fs.StringVarP(&i.Version, "version", "v", "", "version (or version range) from which to resolve bundles")
 	fs.DurationVar(&i.CleanupTimeout, "cleanup-timeout", time.Minute, "the amount of time to wait before cancelling cleanup")
-	fs.BoolVarP(&i.UnsafeCreateClusterRoleBinding, "unsafe-create-cluster-role-binding", "X", false, "create a cluster-admin ClusterRoleBinding for the extension installation")
 	fs.StringVarP(&i.ServiceAccount, "service-account", "s", "default", "service account to use for the extension installation")
 }

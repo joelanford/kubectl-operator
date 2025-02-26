@@ -1,7 +1,6 @@
 package action
 
 import (
-	catalogdv1 "github.com/operator-framework/catalogd/api/v1"
 	"github.com/spf13/pflag"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -24,7 +23,6 @@ func NewScheme() (*runtime.Scheme, error) {
 		ofapiv1.AddToScheme,
 		apiextensionsv1.AddToScheme,
 		ocv1.AddToScheme,
-		catalogdv1.AddToScheme,
 	} {
 		if err := f(sch); err != nil {
 			return nil, err
