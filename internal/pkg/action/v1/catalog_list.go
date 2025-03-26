@@ -2,8 +2,8 @@ package v1
 
 import (
 	"context"
+	ocv1 "github.com/operator-framework/operator-controller/api/v1"
 
-	catalogdv1 "github.com/operator-framework/catalogd/api/v1"
 	"github.com/operator-framework/kubectl-operator/pkg/action"
 )
 
@@ -15,8 +15,8 @@ func NewCatalogList(cfg *action.Configuration) *CatalogList {
 	return &CatalogList{cfg}
 }
 
-func (l *CatalogList) Run(ctx context.Context) ([]catalogdv1.ClusterCatalog, error) {
-	clusterCatalogList := catalogdv1.ClusterCatalogList{}
+func (l *CatalogList) Run(ctx context.Context) ([]ocv1.ClusterCatalog, error) {
+	clusterCatalogList := ocv1.ClusterCatalogList{}
 	if err := l.config.Client.List(ctx, &clusterCatalogList); err != nil {
 		return nil, err
 	}

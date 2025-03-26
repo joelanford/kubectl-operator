@@ -2,9 +2,9 @@ package v1
 
 import (
 	"context"
-	catalogdv1 "github.com/operator-framework/catalogd/api/v1"
 	"github.com/operator-framework/kubectl-operator/internal/pkg/catalog"
 	"github.com/operator-framework/kubectl-operator/pkg/action"
+	ocv1 "github.com/operator-framework/operator-controller/api/v1"
 	"github.com/operator-framework/operator-registry/alpha/declcfg"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -23,7 +23,7 @@ func NewCatalogContent(cfg *action.Configuration) *CatalogContent {
 }
 
 func (r *CatalogContent) Run(ctx context.Context) error {
-	clusterCatalog := catalogdv1.ClusterCatalog{}
+	clusterCatalog := ocv1.ClusterCatalog{}
 	if err := r.config.Client.Get(ctx, client.ObjectKey{Name: r.CatalogName}, &clusterCatalog); err != nil {
 		return err
 	}

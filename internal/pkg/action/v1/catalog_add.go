@@ -3,12 +3,12 @@ package v1
 import (
 	"context"
 	"fmt"
+	ocv1 "github.com/operator-framework/operator-controller/api/v1"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"errors"
-	catalogdv1 "github.com/operator-framework/catalogd/api/v1"
 	"github.com/operator-framework/kubectl-operator/pkg/action"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -51,13 +51,13 @@ func (a *CatalogAdd) applyClusterCatalog(ctx context.Context) error {
 		catalogImageSource["pollInterval"] = metav1.Duration{Duration: a.PollInterval}
 	}
 	u := unstructured.Unstructured{Object: map[string]interface{}{
-		"apiVersion": catalogdv1.GroupVersion.String(),
+		"apiVersion": ocv1.GroupVersion.String(),
 		"kind":       "ClusterCatalog",
 		"metadata":   catalogMetadata,
 		"spec": map[string]interface{}{
 			"priority": a.Priority,
 			"source": map[string]interface{}{
-				"type":  catalogdv1.SourceTypeImage,
+				"type":  ocv1.SourceTypeImage,
 				"image": catalogImageSource,
 			},
 		},
@@ -65,7 +65,7 @@ func (a *CatalogAdd) applyClusterCatalog(ctx context.Context) error {
 	return patchObject(ctx, a.config.Client, &u)
 }
 
-func (a *CatalogAdd) Run(ctx context.Context) (*catalogdv1.ClusterCatalog, error) {
+func (a *CatalogAdd) Run(ctx context.Context) (*ocv1.ClusterCatalog, error) {
 	if err := a.applyClusterCatalog(ctx); err != nil {
 		return nil, fmt.Errorf("apply clustercatalog: %v", err)
 	}
@@ -81,8 +81,8 @@ func (a *CatalogAdd) Run(ctx context.Context) (*catalogdv1.ClusterCatalog, error
 	return clusterCatalog, nil
 }
 
-func (a *CatalogAdd) waitForCatalogServing(ctx context.Context) (*catalogdv1.ClusterCatalog, error) {
-	clusterCatalog := &catalogdv1.ClusterCatalog{
+func (a *CatalogAdd) waitForCatalogServing(ctx context.Context) (*ocv1.ClusterCatalog, error) {
+	clusterCatalog := &ocv1.ClusterCatalog{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: a.CatalogName,
 		},
@@ -94,12 +94,12 @@ func (a *CatalogAdd) waitForCatalogServing(ctx context.Context) (*catalogdv1.Clu
 		if err := a.config.Client.Get(conditionCtx, csKey, clusterCatalog); err != nil {
 			return false, err
 		}
-		progressingCondition := meta.FindStatusCondition(clusterCatalog.Status.Conditions, catalogdv1.TypeProgressing)
-		if progressingCondition != nil && progressingCondition.Reason != catalogdv1.ReasonSucceeded {
+		progressingCondition := meta.FindStatusCondition(clusterCatalog.Status.Conditions, ocv1.TypeProgressing)
+		if progressingCondition != nil && progressingCondition.Reason != ocv1.ReasonSucceeded {
 			errMsg = progressingCondition.Message
 			return false, nil
 		}
-		if !meta.IsStatusConditionPresentAndEqual(clusterCatalog.Status.Conditions, catalogdv1.TypeServing, metav1.ConditionTrue) {
+		if !meta.IsStatusConditionPresentAndEqual(clusterCatalog.Status.Conditions, ocv1.TypeServing, metav1.ConditionTrue) {
 			return false, nil
 		}
 		return true, nil
@@ -113,7 +113,7 @@ func (a *CatalogAdd) waitForCatalogServing(ctx context.Context) (*catalogdv1.Clu
 }
 
 func (a *CatalogAdd) cleanup(ctx context.Context) error {
-	clusterCatalog := &catalogdv1.ClusterCatalog{
+	clusterCatalog := &ocv1.ClusterCatalog{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: a.CatalogName,
 		},

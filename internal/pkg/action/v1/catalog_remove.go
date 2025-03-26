@@ -2,8 +2,8 @@ package v1
 
 import (
 	"context"
-	catalogdv1 "github.com/operator-framework/catalogd/api/v1"
 	"github.com/operator-framework/kubectl-operator/pkg/action"
+	ocv1 "github.com/operator-framework/operator-controller/api/v1"
 )
 
 type CatalogRemove struct {
@@ -19,7 +19,7 @@ func NewCatalogRemove(cfg *action.Configuration) *CatalogRemove {
 }
 
 func (r *CatalogRemove) Run(ctx context.Context) error {
-	clusterCatalog := catalogdv1.ClusterCatalog{}
+	clusterCatalog := ocv1.ClusterCatalog{}
 	clusterCatalog.SetName(r.CatalogName)
 	return deleteAndWait(ctx, r.config.Client, &clusterCatalog)
 }

@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	catalogdv1 "github.com/operator-framework/catalogd/api/v1"
+	ocv1 "github.com/operator-framework/operator-controller/api/v1"
 	"io"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -58,7 +58,7 @@ func (c *LiveClientV1) All(ctx context.Context) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-func NewK8sClient(cfg *rest.Config, cl client.Client, cc *catalogdv1.ClusterCatalog) Client {
+func NewK8sClient(cfg *rest.Config, cl client.Client, cc *ocv1.ClusterCatalog) Client {
 
 	c := &portForwardClient{
 		cfg: cfg,
@@ -78,7 +78,7 @@ func NewK8sClient(cfg *rest.Config, cl client.Client, cc *catalogdv1.ClusterCata
 type portForwardClient struct {
 	cfg        *rest.Config
 	cl         client.Client
-	cc         *catalogdv1.ClusterCatalog
+	cc         *ocv1.ClusterCatalog
 	httpClient *http.Client
 }
 
@@ -91,7 +91,7 @@ type portForwardClientV1 struct {
 }
 
 func (c *portForwardClientV1) All(ctx context.Context) (io.ReadCloser, error) {
-	if !meta.IsStatusConditionTrue(c.cc.Status.Conditions, catalogdv1.TypeServing) {
+	if !meta.IsStatusConditionTrue(c.cc.Status.Conditions, ocv1.TypeServing) {
 		return nil, fmt.Errorf("cluster extension %q is not serving", c.cc.Name)
 	}
 	if c.cc.Status.URLs == nil {

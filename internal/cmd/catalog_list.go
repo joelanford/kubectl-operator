@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	ocv1 "github.com/operator-framework/operator-controller/api/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
 	"text/tabwriter"
@@ -11,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/duration"
 
 	"cmp"
-	catalogdv1 "github.com/operator-framework/catalogd/api/v1"
 	"github.com/operator-framework/kubectl-operator/internal/cmd/internal/log"
 	internalaction "github.com/operator-framework/kubectl-operator/internal/pkg/action/v1"
 	"github.com/operator-framework/kubectl-operator/pkg/action"
@@ -35,8 +35,8 @@ func newCatalogListCmd(cfg *action.Configuration) *cobra.Command {
 				return
 			}
 
-			slices.SortFunc(catalogs, func(a, b catalogdv1.ClusterCatalog) int {
-				return -cmp.Compare(a.Spec.Priority, b.Spec.Priority)
+			slices.SortFunc(catalogs, func(a, b ocv1.ClusterCatalog) int {
+				return cmp.Compare(b.Spec.Priority, a.Spec.Priority)
 			})
 
 			tw := tabwriter.NewWriter(os.Stdout, 3, 4, 2, ' ', 0)
@@ -56,8 +56,8 @@ func newCatalogListCmd(cfg *action.Configuration) *cobra.Command {
 	return cmd
 }
 
-func servingStatus(cat catalogdv1.ClusterCatalog) metav1.ConditionStatus {
-	cond := meta.FindStatusCondition(cat.Status.Conditions, catalogdv1.TypeServing)
+func servingStatus(cat ocv1.ClusterCatalog) metav1.ConditionStatus {
+	cond := meta.FindStatusCondition(cat.Status.Conditions, ocv1.TypeServing)
 	if cond == nil {
 		return metav1.ConditionFalse
 	}
