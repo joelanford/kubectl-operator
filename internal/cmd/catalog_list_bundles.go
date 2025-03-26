@@ -21,7 +21,7 @@ import (
 	"text/tabwriter"
 )
 
-func newCatalogContentCmd(cfg *action.Configuration) *cobra.Command {
+func newCatalogListBundlesCmd(cfg *action.Configuration) *cobra.Command {
 	cc := internalaction.NewCatalogContent(cfg)
 
 	var (
@@ -31,8 +31,8 @@ func newCatalogContentCmd(cfg *action.Configuration) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "content <catalog_name>",
-		Short: "View cluster catalog content",
+		Use:   "list-bundles <catalog_name>",
+		Short: "List bundles from a cluster catalog",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var constraints *semver.Constraints
@@ -129,7 +129,7 @@ func newCatalogContentCmd(cfg *action.Configuration) *cobra.Command {
 			for _, pkg := range pkgNames {
 				bundleNames := collect(maps.Keys(bundles[pkg]))
 				slices.SortFunc(bundleNames, func(a, b string) int {
-					return -bundles[pkg][a].Version.Compare(bundles[pkg][b].Version)
+					return bundles[pkg][b].Version.Compare(bundles[pkg][a].Version)
 				})
 				for _, bundleName := range bundleNames {
 					bundle := bundles[pkg][bundleName]
@@ -163,14 +163,6 @@ type bundleMetadata struct {
 	Name     string
 	Version  *semver.Version
 	Channels sets.Set[string]
-}
-
-func getBundleMetadata(b declcfg.Bundle) (string, string, error) {
-	version, err := getBundleVersion(b)
-	if err != nil {
-		return "", "", err
-	}
-	return b.Package, version.String(), nil
 }
 
 func getBundleVersion(b declcfg.Bundle) (*semver.Version, error) {
