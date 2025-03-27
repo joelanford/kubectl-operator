@@ -5,24 +5,25 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/operator-framework/api/pkg/operators/v1alpha1"
-	ocv1 "github.com/operator-framework/operator-controller/api/v1"
-	"github.com/operator-framework/operator-registry/alpha/declcfg"
-	"github.com/operator-framework/operator-registry/alpha/property"
-	"github.com/spf13/cobra"
 	"io"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"os"
 	"os/signal"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"syscall"
 	"time"
 
 	mcp "github.com/metoro-io/mcp-golang"
 	mcpstdio "github.com/metoro-io/mcp-golang/transport/stdio"
+	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/yaml"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/operator-framework/api/pkg/operators/v1alpha1"
+	ocv1 "github.com/operator-framework/operator-controller/api/v1"
+	"github.com/operator-framework/operator-registry/alpha/declcfg"
+	"github.com/operator-framework/operator-registry/alpha/property"
 
 	"github.com/operator-framework/kubectl-operator/internal/cmd/internal/log"
 	v1action "github.com/operator-framework/kubectl-operator/internal/pkg/action/v1"
@@ -35,10 +36,8 @@ func newMCPCmd(cfg *action.Configuration) *cobra.Command {
 		Short: "Run the model context protocol server",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
-			sigIntCtx, sigIntCancel := signal.NotifyContext(context.Background(), syscall.SIGINT)
-			sigTermCtx, sigTermCancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
-			defer sigIntCancel()
-			defer sigTermCancel()
+			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+			defer cancel()
 
 			server := mcp.NewServer(mcpstdio.NewStdioServerTransport())
 
@@ -48,57 +47,62 @@ func newMCPCmd(cfg *action.Configuration) *cobra.Command {
 				handler     any
 			}{
 				{
-					name:        "ListClusterCatalogs",
+					name:        "list_cluster_catalogs",
 					description: "List the ClusterCatalogs that are present in the cluster.",
 					handler:     listClusterCatalogs(cfg),
 				},
 				{
-					name:        "GetOrListPackagesFromCatalog",
-					description: "Get or list the packages that are present in a given ClusterCatalog. This is the primary tool to help users understand what is available in the catalog.",
-					handler:     getOrListPackagesFromCatalog(cfg),
+					name:        "list_packages_from_catalog",
+					description: "List the packages that are present in a given ClusterCatalog. This function returns a list of packages by name.",
+					handler:     listPackagesFromCatalog(cfg),
 				},
 				{
-					name:        "CreateClusterCatalog",
-					description: "Create a ClusterCatalog in the cluster from which packages can be installed. The returned data includes the status of the catalog after creation.",
+					name:        "get_package_from_catalog",
+					description: "Get the specified package metadata from the given ClusterCatalog. This function returns detailed metadata about a package. It is useful to call this after the packages have been listed in order to get more specific information about a particular package.",
+					handler:     getPackageFromCatalog(cfg),
+				},
+				{
+					name:        "create_cluster_catalog",
+					description: "Add a ClusterCatalog to the cluster from which packages can be installed. The returned data includes the status of the catalog after creation.",
 					handler:     createClusterCatalog(cfg),
 				},
 				{
-					name:        "DeleteClusterCatalog",
-					description: "Delete a ClusterCatalog in the cluster so that its packages and bundles are no longer available for installation or upgrades",
+					name:        "delete_cluster_catalog",
+					description: "Delete a ClusterCatalog from the cluster so that its packages and bundles are no longer available for installation or upgrades",
 					handler:     deleteClusterCatalog(cfg),
 				},
 				{
-					name:        "ListClusterExtensions",
-					description: "List the ClusterExtensions that are present in the cluster.",
+					name:        "list_cluster_extensions",
+					description: "List the ClusterExtensions that are present in the cluster. These represent the set of packages that have actually been installed.",
 					handler:     listClusterExtensions(cfg),
 				},
 				{
-					name:        "CreateClusterExtension",
-					description: "Creates a ClusterExtension in the cluster to install a package at a particular version.",
-					handler:     createClusterExtension(cfg),
+					name:        "install_cluster_extension",
+					description: "Install a ClusterExtension in the cluster for a package at a particular version.",
+					handler:     installClusterExtension(cfg),
 				},
 				{
-					name:        "DeleteClusterExtension",
-					description: "Delete a ClusterExtension in the cluster. Beware, when a cluster extension is deleted, all of its managed objects are deleted. This can have cascading effects and cause data loss for users. Therefore, use of this function should be gated by asking the user to review the request parameters and warning them of the possible effects BEFORE actually calling it.",
+					name:        "delete_cluster_extension",
+					description: "Delete a ClusterExtension from the cluster. Beware, when a cluster extension is deleted, all of its managed objects are deleted. This can have cascading effects and cause data loss for users. Therefore, use of this function should be gated by asking the user to review the request parameters and warning them of the possible effects BEFORE actually calling it.",
 					handler:     deleteClusterExtension(cfg),
 				},
 				{
-					name:        "ListObjectsManagedByClusterExtension",
+					name:        "list_objects_managed_by_cluster_extension",
 					description: "List all of the objects that are being managed under the umbrella of a ClusterExtension.",
 					handler:     listClusterExtensionManagedObjects(cfg),
 				},
 				{
-					name:        "GetSampleCustomResourcesForClusterExtension",
-					description: "This function requires the given cluster extension to already be installed. It gets the alm-examples provided by the extension author for the bundle currently installed for the given cluster extension (by its metadata.name). The returned objects can be applied to the cluster to actual instantiate services provided by the extension.",
-					handler:     listSamplesFromCatalogForClusterExtension(cfg),
+					name:        "get_example_custom_resources_for_cluster_extension",
+					description: "This function requires the given cluster extension to already be installed. It gets the example custom resources provided by the extension author for the bundle currently installed for the given cluster extension (by its metadata.name). The returned objects can be applied to the cluster to actual instantiate services provided by the extension.",
+					handler:     listExamplesFromCatalogForClusterExtension(cfg),
 				},
 				{
-					name:        "ApplySampleCustomResource",
-					description: "Using alm-examples provided by the GetSampleCustomResourcesForClusterExtension, apply one of those examples on the cluster.",
-					handler:     applySampleCustomResource(cfg),
+					name:        "apply_example_custom_resource",
+					description: "Using examples provided by the 'get_example_custom_resources_for_cluster_extension' function, apply one of those examples on the cluster.",
+					handler:     applyExampleCustomResource(cfg),
 				},
 				{
-					name:        "GetArbitraryObject",
+					name:        "get_arbitrary_object",
 					description: "Get an arbitrary object from the cluster by its name, namespace, apiVersion, and kind. Namespace SHOULD be explicitly set to empty string for cluster-scoped objects.",
 					handler:     getArbitraryObject(cfg),
 				},
@@ -111,12 +115,8 @@ func newMCPCmd(cfg *action.Configuration) *cobra.Command {
 				log.Fatal(err)
 			}
 			fmt.Fprintln(os.Stderr, "MCP server started")
-			select {
-			case <-sigIntCtx.Done():
-				fmt.Fprintln(os.Stderr, "SIGINT: MCP server stopped")
-			case <-sigTermCtx.Done():
-				fmt.Fprintln(os.Stderr, "SIGTERM: MCP server stopped")
-			}
+			<-ctx.Done()
+			fmt.Fprintln(os.Stderr, "MCP server stopped")
 		},
 	}
 
@@ -126,9 +126,12 @@ func newMCPCmd(cfg *action.Configuration) *cobra.Command {
 type listClusterCatalogsRequest struct{}
 type listClusterExtensionsRequest struct{}
 
-type getOrListPackagesFromCatalogsRequest struct {
+type listPackagesFromCatalogRequest struct {
 	ClusterCatalogName string `json:"clusterCatalogName" jsonschema:"required,description=The name of the cluster catalog from which to list packages."`
-	PackageName        string `json:"packageName" jsonschema:"description=Optionally, a specific package name to list. When a package name is provided, the response will contain much more detailed information about the particular package."`
+}
+type getPackageFromCatalogRequest struct {
+	ClusterCatalogName string `json:"clusterCatalogName" jsonschema:"required,description=The name of the cluster catalog from which to get the package metadata."`
+	PackageName        string `json:"packageName" jsonschema:"required,description=The name of the package to get metadata about."`
 }
 
 type createClusterCatalogRequest struct {
@@ -199,9 +202,26 @@ func listClusterCatalogs(cfg *action.Configuration) func(context.Context, listCl
 	}
 }
 
-func getOrListPackagesFromCatalog(cfg *action.Configuration) func(context.Context, getOrListPackagesFromCatalogsRequest) (*mcp.ToolResponse, error) {
-	return func(ctx context.Context, req getOrListPackagesFromCatalogsRequest) (*mcp.ToolResponse, error) {
+func listPackagesFromCatalog(cfg *action.Configuration) func(context.Context, listPackagesFromCatalogRequest) (*mcp.ToolResponse, error) {
+	return func(ctx context.Context, req listPackagesFromCatalogRequest) (*mcp.ToolResponse, error) {
 		fmt.Fprintln(os.Stderr, "listing packages from cluster catalog")
+		listPackages := v1action.NewCatalogListPackages(cfg)
+		listPackages.CatalogName = req.ClusterCatalogName
+
+		packages, err := listPackages.Run(ctx)
+		if err != nil {
+			return mcpToolResponse(err)
+		}
+		for i := range packages {
+			packages[i] = v1action.PackageSummary{Name: packages[i].Name}
+		}
+		return mcpToolResponse(packages)
+	}
+}
+
+func getPackageFromCatalog(cfg *action.Configuration) func(context.Context, getPackageFromCatalogRequest) (*mcp.ToolResponse, error) {
+	return func(ctx context.Context, req getPackageFromCatalogRequest) (*mcp.ToolResponse, error) {
+		fmt.Fprintln(os.Stderr, "getting package from cluster catalog")
 		listPackages := v1action.NewCatalogListPackages(cfg)
 		listPackages.CatalogName = req.ClusterCatalogName
 		listPackages.PackageName = req.PackageName
@@ -210,12 +230,17 @@ func getOrListPackagesFromCatalog(cfg *action.Configuration) func(context.Contex
 		if err != nil {
 			return mcpToolResponse(err)
 		}
-		if req.PackageName == "" {
-			for i := range packages {
-				packages[i] = v1action.PackageSummary{Name: packages[i].Name}
-			}
+
+		if len(packages) == 0 {
+			return mcpToolResponse(fmt.Errorf("no packages found in catalog %q with name %q", req.ClusterCatalogName, req.PackageName))
 		}
-		return mcpToolResponse(packages)
+		if len(packages) > 1 {
+			return mcpToolResponse(fmt.Errorf("multiple packages found in catalog %q with name %q", req.ClusterCatalogName, req.PackageName))
+		}
+		if packages[0].Name != req.PackageName {
+			return mcpToolResponse(fmt.Errorf("found package name %q that does not match expected package name %q", packages[0].Name, req.PackageName))
+		}
+		return mcpToolResponse(packages[0])
 	}
 }
 
@@ -264,7 +289,7 @@ func deleteClusterCatalog(cfg *action.Configuration) func(context.Context, delet
 	}
 }
 
-func createClusterExtension(cfg *action.Configuration) func(context.Context, createClusterExtensionRequest) (*mcp.ToolResponse, error) {
+func installClusterExtension(cfg *action.Configuration) func(context.Context, createClusterExtensionRequest) (*mcp.ToolResponse, error) {
 	return func(ctx context.Context, req createClusterExtensionRequest) (*mcp.ToolResponse, error) {
 		fmt.Fprintf(os.Stderr, "creating cluster extension from request %#v\n", req)
 
@@ -336,7 +361,7 @@ func listClusterExtensionManagedObjects(cfg *action.Configuration) func(context.
 	}
 }
 
-func listSamplesFromCatalogForClusterExtension(cfg *action.Configuration) func(context.Context, getSamplesForClusterExtensionRequest) (*mcp.ToolResponse, error) {
+func listExamplesFromCatalogForClusterExtension(cfg *action.Configuration) func(context.Context, getSamplesForClusterExtensionRequest) (*mcp.ToolResponse, error) {
 	return func(ctx context.Context, req getSamplesForClusterExtensionRequest) (*mcp.ToolResponse, error) {
 		fmt.Fprintf(os.Stderr, "getting samples from catalog for cluster extension %q\n", req.ClusterExtensionName)
 		getSamples := v1action.NewCatalogContent(cfg)
@@ -387,7 +412,7 @@ func listSamplesFromCatalogForClusterExtension(cfg *action.Configuration) func(c
 	}
 }
 
-func applySampleCustomResource(cfg *action.Configuration) func(context.Context, applySamplesCustomResourceRequest) (*mcp.ToolResponse, error) {
+func applyExampleCustomResource(cfg *action.Configuration) func(context.Context, applySamplesCustomResourceRequest) (*mcp.ToolResponse, error) {
 	return func(ctx context.Context, req applySamplesCustomResourceRequest) (*mcp.ToolResponse, error) {
 		objs, err := manifestToObjects(req.CustomResource)
 		if err != nil {
