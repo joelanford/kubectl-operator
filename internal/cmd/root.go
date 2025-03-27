@@ -54,6 +54,7 @@ operators from the installed catalogs.`,
 		newExtensionInstallCmd(&cfg),
 		newExtensionUninstallCmd(&cfg),
 		newExtensionListCmd(&cfg),
+		newMCPCmd(&cfg),
 		//newExtensionListOperandsCmd(&cfg),
 		newVersionCmd(),
 	)
