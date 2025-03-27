@@ -37,6 +37,6 @@ func newCatalogAddCmd(cfg *action.Configuration) *cobra.Command {
 
 func bindCatalogAddFlags(fs *pflag.FlagSet, a *internalaction.CatalogAdd) {
 	fs.Int32Var(&a.Priority, "priority", 0, "the priority of the catalog")
-	fs.DurationVar(&a.PollInterval, "poll-interval", 10*time.Minute, "the poll interval to configure for the catalog, set to 0 to disable")
+	fs.IntVar(&a.PollIntervalMinutes, "poll-interval-minutes", 10, "the poll interval to configure for the catalog, set to 0 to disable")
 	fs.DurationVar(&a.CleanupTimeout, "cleanup-timeout", time.Minute, "the amount of time to wait before cancelling cleanup")
 }

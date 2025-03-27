@@ -1,117 +1,38 @@
 package cmd
 
 import (
-	"cmp"
-	"encoding/json"
 	"fmt"
 	"github.com/Masterminds/semver/v3"
 	"github.com/operator-framework/kubectl-operator/internal/cmd/internal/log"
 	internalaction "github.com/operator-framework/kubectl-operator/internal/pkg/action/v1"
 	"github.com/operator-framework/kubectl-operator/pkg/action"
-	"github.com/operator-framework/operator-registry/alpha/declcfg"
-	"github.com/operator-framework/operator-registry/alpha/property"
 	"github.com/spf13/cobra"
 	"iter"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"maps"
 	"os"
-	"slices"
 	"strings"
-	"sync"
 	"text/tabwriter"
 )
 
 func newCatalogListBundlesCmd(cfg *action.Configuration) *cobra.Command {
-	cc := internalaction.NewCatalogContent(cfg)
+	lb := internalaction.NewCatalogListBundles(cfg)
 
-	var (
-		pkgName      string
-		versionRange string
-		channels     []string
-	)
+	var versionRange string
 
 	cmd := &cobra.Command{
 		Use:   "list-bundles <catalog_name>",
 		Short: "List bundles from a cluster catalog",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			var constraints *semver.Constraints
-			if versionRange != "" {
-				var err error
-				constraints, err = semver.NewConstraint(versionRange)
-				if err != nil {
-					log.Fatalf("invalid version range %q: %v", versionRange, err)
-				}
+			lb.CatalogName = args[0]
+			constraints, err := getVersionRangeConstraints(versionRange)
+			if err != nil {
+				log.Fatal(err)
 			}
+			lb.VersionRange = *constraints
 
-			cc.CatalogName = args[0]
-			var (
-				bundles = map[string]map[string]*bundleMetadata{}
-				mu      sync.Mutex
-			)
-			cc.WalkMetas = func(meta *declcfg.Meta, err error) error {
-				if err != nil {
-					return err
-				}
-				if pkgName != "" && pkgName != meta.Package {
-					return nil
-				}
-				if meta.Schema == declcfg.SchemaChannel {
-					var ch declcfg.Channel
-					if err := json.Unmarshal(meta.Blob, &ch); err != nil {
-						return err
-					}
-					for _, entry := range ch.Entries {
-						mu.Lock()
-						pkg, ok := bundles[ch.Package]
-						if !ok {
-							pkg = map[string]*bundleMetadata{}
-						}
-						b, ok := pkg[entry.Name]
-						if !ok {
-							b = &bundleMetadata{
-								Name:     entry.Name,
-								Channels: sets.New[string](),
-							}
-							pkg[entry.Name] = b
-						}
-						b.Channels.Insert(meta.Name)
-						bundles[ch.Package] = pkg
-						mu.Unlock()
-					}
-					return nil
-				}
-				if meta.Schema == declcfg.SchemaBundle {
-					bundle := declcfg.Bundle{}
-					if err := json.Unmarshal(meta.Blob, &bundle); err != nil {
-						return err
-					}
-					bundleVersion, err := getBundleVersion(bundle)
-					if err != nil {
-						return err
-					}
-					mu.Lock()
-					pkg, ok := bundles[bundle.Package]
-					if !ok {
-						pkg = map[string]*bundleMetadata{}
-					}
-					b, ok := pkg[bundle.Name]
-					if !ok {
-						b = &bundleMetadata{
-							Name:     meta.Name,
-							Channels: sets.New[string](),
-						}
-						pkg[bundle.Name] = b
-					}
-					b.Version = bundleVersion
-					bundles[bundle.Package] = pkg
-					mu.Unlock()
-				}
-				return nil
-			}
-
-			if err := cc.Run(cmd.Context()); err != nil {
-				log.Fatalf("failed to get content for catalog %q: %v", cc.CatalogName, err)
+			bundles, err := lb.Run(cmd.Context())
+			if err != nil {
+				log.Fatal(err)
 			}
 
 			if len(bundles) == 0 {
@@ -120,35 +41,30 @@ func newCatalogListBundlesCmd(cfg *action.Configuration) *cobra.Command {
 			}
 
 			tw := tabwriter.NewWriter(os.Stdout, 3, 4, 2, ' ', 0)
-			_, _ = fmt.Fprintf(tw, "PACKAGE\tVERSION\tCHANNELS\t\n")
+			_, _ = fmt.Fprintf(tw, "PACKAGE\tNAME\tVERSION\tCHANNELS\t\n")
 
-			pkgNames := collect(maps.Keys(bundles))
-			slices.SortFunc(pkgNames, func(a, b string) int {
-				return cmp.Compare(a, b)
-			})
-			for _, pkg := range pkgNames {
-				bundleNames := collect(maps.Keys(bundles[pkg]))
-				slices.SortFunc(bundleNames, func(a, b string) int {
-					return bundles[pkg][b].Version.Compare(bundles[pkg][a].Version)
-				})
-				for _, bundleName := range bundleNames {
-					bundle := bundles[pkg][bundleName]
-					if constraints != nil && !constraints.Check(bundle.Version) {
-						continue
-					}
-					if len(channels) > 0 && !bundle.Channels.HasAny(channels...) {
-						continue
-					}
-					_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", pkg, bundle.Version, strings.Join(sets.List(bundle.Channels), ","))
-				}
+			for _, b := range bundles {
+				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", b.Package, b.Name, b.Version, strings.Join(b.Channels, ","))
+
 			}
 			_ = tw.Flush()
 		},
 	}
-	cmd.Flags().StringVarP(&pkgName, "package", "p", "", "package name to filter")
+	cmd.Flags().StringVarP(&lb.PackageName, "package", "p", "", "package name to filter")
 	cmd.Flags().StringVarP(&versionRange, "version", "v", "", "version range to filter")
-	cmd.Flags().StringSliceVarP(&channels, "channels", "c", []string{}, "channels to filter")
+	cmd.Flags().StringSliceVarP(&lb.Channels, "channels", "c", []string{}, "channels to filter")
 	return cmd
+}
+
+func getVersionRangeConstraints(versionRangeStr string) (*semver.Constraints, error) {
+	if versionRangeStr != "" {
+		return semver.NewConstraint(versionRangeStr)
+	}
+	all, err := semver.NewConstraint(">=0.0.0-0")
+	if err != nil {
+		panic("programmer invalid version range for matching all versions")
+	}
+	return all, nil
 }
 
 func collect[V any](i iter.Seq[V]) []V {
@@ -157,28 +73,4 @@ func collect[V any](i iter.Seq[V]) []V {
 		out = append(out, v)
 	}
 	return out
-}
-
-type bundleMetadata struct {
-	Name     string
-	Version  *semver.Version
-	Channels sets.Set[string]
-}
-
-func getBundleVersion(b declcfg.Bundle) (*semver.Version, error) {
-	packageValue := json.RawMessage{}
-	for _, p := range b.Properties {
-		if p.Type == property.TypePackage {
-			packageValue = p.Value
-			break
-		}
-	}
-	if len(packageValue) == 0 {
-		return nil, fmt.Errorf("no package property found")
-	}
-	packageProp := property.Package{}
-	if err := json.Unmarshal(packageValue, &packageProp); err != nil {
-		return nil, err
-	}
-	return semver.NewVersion(packageProp.Version)
 }

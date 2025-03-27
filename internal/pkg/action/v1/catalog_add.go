@@ -19,11 +19,11 @@ import (
 type CatalogAdd struct {
 	config *action.Configuration
 
-	CatalogName  string
-	Labels       map[string]string
-	CatalogImage string
-	Priority     int32
-	PollInterval time.Duration
+	CatalogName         string
+	Labels              map[string]string
+	CatalogImage        string
+	Priority            int32
+	PollIntervalMinutes int
 
 	CleanupTimeout time.Duration
 	Logf           func(string, ...interface{})
@@ -47,8 +47,8 @@ func (a *CatalogAdd) applyClusterCatalog(ctx context.Context) error {
 	catalogImageSource := map[string]interface{}{
 		"ref": a.CatalogImage,
 	}
-	if a.PollInterval != 0 {
-		catalogImageSource["pollInterval"] = metav1.Duration{Duration: a.PollInterval}
+	if a.PollIntervalMinutes > 0 {
+		catalogImageSource["pollIntervalMinutes"] = a.PollIntervalMinutes
 	}
 	u := unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": ocv1.GroupVersion.String(),
