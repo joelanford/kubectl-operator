@@ -97,6 +97,11 @@ func newMCPCmd(cfg *action.Configuration) *cobra.Command {
 					description: "Using alm-examples provided by the GetSampleCustomResourcesForClusterExtension, apply one of those examples on the cluster.",
 					handler:     applySampleCustomResource(cfg),
 				},
+				{
+					name:        "GetArbitraryObject",
+					description: "Get an arbitrary object from the cluster by its name, namespace, apiVersion, and kind. Namespace SHOULD be explicitly set to empty string for cluster-scoped objects.",
+					handler:     getArbitraryObject(cfg),
+				},
 			} {
 				if err := server.RegisterTool(tool.name, tool.description, tool.handler); err != nil {
 					log.Fatal(err)
@@ -154,12 +159,19 @@ type listClusterExtensionManagedObjectsRequest struct {
 }
 
 type getSamplesForClusterExtensionRequest struct {
-	ClusterExtensionName string `json:"clusterExtensionName" jsonschema:"required,description=The name of the ClusterExtension to get samples for"`
-	CatalogName          string `json:"catalogName" jsonschema:"requires,description=The name of the ClusterCatalog from which to lookup the samples"`
+	ClusterExtensionName string `json:"clusterExtensionName" jsonschema:"required,description=The name of the ClusterExtension to get samples for. The cluster extension name is required."`
+	CatalogName          string `json:"catalogName" jsonschema:"requires,description=The name of the ClusterCatalog from which to lookup the samples. The catalog name is required."`
 }
 
 type applySamplesCustomResourceRequest struct {
 	CustomResource string `json:"customResource" jsonschema:"required,description=The YAML or JSON of custom resource sample to apply to the cluster"`
+}
+
+type getObjectRequest struct {
+	Name       string `json:"name" jsonschema:"required,description=The name of the object to get"`
+	Namespace  string `json:"namespace" jsonschema:"required,description=The namespace of the object to get. If the object is cluster-scoped, this field should be set to an empty string."`
+	APIVersion string `json:"apiVersion" jsonschema:"required,description=The API version of the object to get"`
+	Kind       string `json:"kind" jsonschema:"required,description=The kind of the object to get"`
 }
 
 func mcpToolResponse(v any) (*mcp.ToolResponse, error) {
@@ -397,6 +409,21 @@ func applySampleCustomResource(cfg *action.Configuration) func(context.Context, 
 			return mcpToolResponse(errors.Join(applyErrors...))
 		}
 		return mcpToolResponse(appliedObjects)
+	}
+}
+
+func getArbitraryObject(cfg *action.Configuration) func(context.Context, getObjectRequest) (*mcp.ToolResponse, error) {
+	return func(ctx context.Context, req getObjectRequest) (*mcp.ToolResponse, error) {
+		obj := &unstructured.Unstructured{}
+		obj.SetNamespace(req.Namespace)
+		obj.SetName(req.Name)
+		obj.SetAPIVersion(req.APIVersion)
+		obj.SetKind(req.Kind)
+
+		if err := cfg.Client.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
+			return mcpToolResponse(err)
+		}
+		return mcpToolResponse(obj)
 	}
 }
 
