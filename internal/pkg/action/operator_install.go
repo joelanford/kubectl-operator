@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -286,25 +287,39 @@ var semverRegexp = regexp.MustCompile(`(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\
 
 func (i *OperatorInstall) getInstallPlan(ctx context.Context, sub *v1alpha1.Subscription) (*v1alpha1.InstallPlan, error) {
 	subKey := objectKeyForObject(sub)
+
+	var ip *v1alpha1.InstallPlan
 	if err := wait.PollUntilContextCancel(ctx, time.Millisecond*250, true, func(conditionCtx context.Context) (bool, error) {
 		if err := i.config.Client.Get(conditionCtx, subKey, sub); err != nil {
 			return false, err
 		}
-		if sub.Status.InstallPlanRef != nil {
-			return true, nil
+		if sub.Status.InstallPlanRef == nil {
+			return false, nil
 		}
-		return false, nil
-	}); err != nil {
-		return nil, fmt.Errorf("waiting for install plan to exist: %v", err)
-	}
 
-	ip := v1alpha1.InstallPlan{}
-	ipKey := types.NamespacedName{
-		Namespace: sub.Status.InstallPlanRef.Namespace,
-		Name:      sub.Status.InstallPlanRef.Name,
+		curIP := v1alpha1.InstallPlan{}
+		key := types.NamespacedName{
+			Namespace: sub.Status.InstallPlanRef.Namespace,
+			Name:      sub.Status.InstallPlanRef.Name,
+		}
+		if err := i.config.Client.Get(ctx, key, &curIP); err != nil {
+			if apierrors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, fmt.Errorf("get install plan: %v", err)
+		}
+
+		switch curIP.Status.Phase {
+		case v1alpha1.InstallPlanPhaseFailed:
+			return false, fmt.Errorf("install plan failed: %v", curIP.Status.Message)
+		case v1alpha1.InstallPlanPhaseRequiresApproval, v1alpha1.InstallPlanPhaseInstalling, v1alpha1.InstallPlanPhaseComplete:
+			ip = &curIP
+			return true, nil
+		default:
+			return false, nil
+		}
+	}); err != nil {
+		return nil, fmt.Errorf("waiting for install plan to be ready: %v", err)
 	}
-	if err := i.config.Client.Get(ctx, ipKey, &ip); err != nil {
-		return nil, fmt.Errorf("get install plan: %v", err)
-	}
-	return &ip, nil
+	return ip, nil
 }

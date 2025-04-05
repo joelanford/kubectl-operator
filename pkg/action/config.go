@@ -1,11 +1,10 @@
 package action
 
 import (
-	"context"
-
 	"github.com/spf13/pflag"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -33,9 +32,10 @@ func NewScheme() (*runtime.Scheme, error) {
 }
 
 type Configuration struct {
-	Client    client.Client
-	Namespace string
-	Scheme    *runtime.Scheme
+	Client        client.Client
+	DynamicClient dynamic.Interface
+	Namespace     string
+	Scheme        *runtime.Scheme
 
 	overrides *clientcmd.ConfigOverrides
 }
@@ -80,25 +80,21 @@ func (c *Configuration) Load() error {
 	if err != nil {
 		return err
 	}
-	cl, err := client.New(cc, client.Options{
+	cl, err := client.NewWithWatch(cc, client.Options{
 		Scheme: sch,
 	})
 	if err != nil {
 		return err
 	}
+	dynamicClient, err := dynamic.NewForConfig(cc)
+	if err != nil {
+		return err
+	}
 
 	c.Scheme = sch
-	c.Client = &operatorClient{cl}
+	c.Client = client.WithFieldOwner(cl, "kubectl-operator")
+	c.DynamicClient = dynamicClient
 	c.Namespace = ns
 
 	return nil
-}
-
-type operatorClient struct {
-	client.Client
-}
-
-func (c *operatorClient) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
-	opts = append(opts, client.FieldOwner("kubectl-operator"))
-	return c.Client.Create(ctx, obj, opts...)
 }

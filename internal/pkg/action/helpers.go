@@ -77,9 +77,25 @@ func getCSV(ctx context.Context, cl client.Client, ip *v1alpha1.InstallPlan) (*v
 	if csvKey.Name == "" {
 		return nil, fmt.Errorf("could not find installed CSV in install plan")
 	}
-	csv := &v1alpha1.ClusterServiceVersion{}
-	if err := cl.Get(ctx, csvKey, csv); err != nil {
-		return nil, fmt.Errorf("get clusterserviceversion: %v", err)
+
+	var csv *v1alpha1.ClusterServiceVersion
+	if err := wait.PollUntilContextCancel(ctx, 250*time.Millisecond, true, func(conditionCtx context.Context) (bool, error) {
+		curCSV := &v1alpha1.ClusterServiceVersion{}
+		if err := cl.Get(ctx, csvKey, curCSV); err != nil {
+			return false, fmt.Errorf("get clusterserviceversion: %v", err)
+		}
+		switch curCSV.Status.Phase {
+		case v1alpha1.CSVPhaseFailed:
+			return false, fmt.Errorf("csv failed: %v", curCSV.Status.Message)
+		case v1alpha1.CSVPhaseSucceeded:
+			csv = curCSV
+			return true, nil
+		default:
+			return false, nil
+		}
+	}); err != nil {
+		return nil, fmt.Errorf("wait for clusterserviceversion: %v", err)
 	}
+
 	return csv, nil
 }
